@@ -1,0 +1,11 @@
+survey/
+
+/bin/
+/obj/
+lib/
+include/
+share/
+local/
+Classnote/
+.vscode/
+.agent/
