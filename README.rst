@@ -1,157 +1,129 @@
 ========================================================================
-LockFreeReplay: A Zero-Copy Lock-Free Ring Buffer for RL
+FastReplay: A Zero-Copy Atomic-Based Ring Buffer for RL
 ========================================================================
 
 Basic Information
 =================
 
-* **Project Name**: LockFreeReplay
-* **GitHub Repository**: https://github.com/alu98753/LockFreeReplay
+* **Project Name**: FastReplay
+* **GitHub Repository**: https://github.com/alu98753/FastReplay
 * **Developer**: alu98753 (Tzu-Cheng Huang)
 
-LockFreeReplay is a C++ library providing a single-producer/single-consumer
-lock-free ring buffer for experience replay in reinforcement learning,
-coupled with a zero-copy Python interface. 
+FastReplay is a C++ library providing a single-producer/single-consumer
+(SPSC) ring buffer for experience replay in reinforcement learning.
+It exposes its internal memory buffer to Python via pybind11's
+buffer protocol to achieve zero-copy data sharing between C++ and Python.
 
-In distributed or high-throughput RL data pipelines, memory buffers are
-required to store transition data (e.g., state, action, reward). 
-There are two major bottlenecks in existing implementations:
+Technical Definition
+====================
 
-1. Storing data in Python or using lock-protected C++ queues leads to 
-    Global Interpreter Lock (GIL) contention and thread stalling during 
-    concurrent read/write operations.
-2. Transferring data between C++ (environment runners/replay buffers) and
-    Python (training loops) involves memory copying, which consumes CPU 
-    cycles and memory bandwidth.
+To ensure clarity and avoid misaligned understandings:
+
+1. This project implements an SPSC queue that ultimately
+   uses ``std::atomic`` and explicit memory ordering.
+2. It is **not** guaranteed to be "lock-free" in the strict hardware sense
+   on all platforms (i.e., ``std::atomic<T>::is_lock_free()`` may return
+   false depending on the architecture and type ``T``), but it
+   specifically avoids OS-level primitives like ``std::mutex``.
+3. **Locking Behavior Specification:** The code avoids explicit
+   locking in the hot data path (push/sample). However, the
+   underlying ``std::atomic`` implementation may use locks
+   internally on some platforms. Memory allocation during
+   initialization and Python-side object management may also
+   involve underlying OS locks.
 
 Problem to Solve
 ================
 
-The primary problem LockFreeReplay tries to solve is to eliminate lock
-contention on the replay data path and share memory buffers between C++ and
-Python (NumPy) without copying.
+The primary problem is to eliminate mutex contention on the replay data
+path and share memory buffers between C++ and Python (NumPy) without
+copying.
 
-Multi-dimensional arrays holding RL transitions require fast concurrent 
-writes from the actor (producer) and fast batch sampling from the learner 
-(consumer). Standard Python-based multiprocessing or lock-based C++ queues 
-suffer from locking overhead. Passing sampled mini-batches back to Python 
+Multi-dimensional arrays holding RL transitions require fast concurrent
+writes from the actor (producer) and fast batch sampling from the learner
+(consumer). Standard Python-based multiprocessing or lock-based C++ queues
+suffer from locking overhead. Passing sampled mini-batches back to Python
 typically results in memory copies.
 
-LockFreeReplay focuses on providing a lock-free C++ data structure 
-to solve the writing contention and exposing the underlying contiguous 
-memory directly to Python via pybind11's buffer protocol to avoid copying.
+FastReplay focuses on providing an atomic-based C++ data
+structure to solve the writing contention and exposing the
+underlying contiguous memory directly to Python via pybind11's
+buffer protocol to avoid copying.
 
 Prospective Users
 =================
 
 Researchers and engineers building single-node RL pipelines who need
 high-throughput data collection without the overhead of heavy distributed
-systems (like Reverb) or Python multiprocessing. 
+systems (like Reverb) or Python multiprocessing.
 
 System Architecture
 ===================
 
-LockFreeReplay will be developed in C++ using atomic operations for head 
-and tail indices to achieve a lock-free SPSC ring buffer. It manages
-untyped memory buffers for fixed-layout transitions.
+FastReplay uses atomic head/tail indices for the SPSC logic. It
+allocates a contiguous memory block in C++.
 
-In C++, a class ``ReplayBuffer`` allocates a contiguous memory block. 
-It does not use mutexes for concurrent read/write operations from a 
-single producer and a single consumer thread.
+The C++ buffer must outlive any Python views referencing
+its memory. This project avoids ``std::shared_ptr``
+(which involves internal locking for reference counting).
+Lifetime safety will be handled through pybind11's
+ownership policies from the start of Python integration.
 
-In Python, the C++ buffer is wrapped using pybind11. It exposes views of 
-the memory block directly as NumPy ``ndarray`` via ``pybind11::buffer_info``.
-
-Users are enabled to push transition data from Python (or C++) and sample
-mini-batches in Python. The sampling function returns NumPy views pointing
-exactly to the C++ memory block, ensuring zero-copy.
-
-Note
-----
-
-* By lock-free, the implementation uses ``std::atomic`` 
-  and memory ordering, specifically avoiding ``std::mutex``.
-* The scope is constrained to a single-producer, single-consumer (SPSC)
-  bounded queue with an overwrite-oldest policy. Multi-producer scenarios 
-  are not supported in this initial version.
-* The Python view lifetime must not outlive the C++ buffer allocation; 
-  this will be managed via smart pointers (e.g., ``std::shared_ptr``).
-
-API Description
-===============
-
-The main class ``ReplayBuffer`` will have constructors taking buffer
-capacity and transition layout (e.g., shapes of state and action).
-
-C++ methods will include ``push()`` for appending data and ``sample()`` 
-for retrieving data indices.
-
-The Python interface, bound via pybind11, will provide:
-* ``buffer.push_batch(ndarray)``: Accepts NumPy arrays containing 
-  transitions.
-* ``buffer.sample_views(batch_size)``: Returns a dictionary of NumPy arrays
-  representing the sampled mini-batch. These arrays are zero-copy views of 
-  the C++ memory.
+In Python, the C++ buffer is wrapped using pybind11, exposing
+memory blocks directly as NumPy ``ndarray`` via the buffer protocol.
 
 Engineering Infrastructure
 ==========================
 
-* **Build System**: CMake configures the project and builds the pybind11
-  module.
-* **Testing**: Google Test (C++) tests the correctness of the lock-free 
-  logic (e.g., no data loss during concurrent push/sample). 
-  ThreadSanitizer (TSan) will be utilized to detect data races. 
-  ``pytest`` (Python) asserts zero-copy behavior (memory address checking) 
-  and functional correctness.
-* **Version Control**: Git tracks changes, with regular commits 
-  demonstrating progress.
-* **Continuous Integration**: GitHub Actions automatically runs the C++ 
-  and Python test suites on Linux for each commit.
-* **Performance Measurement**: Throughput (operations per second) and 
-  latency percentiles will be tracked using standard C++ timing libraries 
-  to prove the effectiveness of the lock-free design against a mutex-based 
-  baseline.
+* Build System: CMake.
+* Testing: Google Test (C++) for concurrency; ``pytest`` (Python) for
+  zero-copy validation and functional correctness.
+* CI: GitHub Actions (Linux).
+* Analysis: ThreadSanitizer (TSan) to detect data races.
 
 Schedule
 ========
 
-Week 1 (03/16 - 03/22): 
-  Define the transition layout structure. Implement a baseline 
-  mutex-based ring buffer in C++ and write single-threaded correctness 
-  tests using Google Test.
+Week 1 (03/23 to 03/29):
+  Project setup: GitHub repository, CMake build system, and
+  minimal pybind11 scaffold.
 
-Week 2 (03/23 - 03/29):
-  Refactor the C++ ring buffer to an SPSC lock-free implementation using
-  ``std::atomic``. Implement cache line alignment (``alignas(64)``) to 
-  prevent false sharing. 
+Week 2 (03/30 to 04/05):
+  Implement basic SPSC ring buffer in C++ (mutex-based first).
+  Create Python binding and write ``pytest`` tests for
+  push/pop correctness from the Python side.
 
-Week 3 (03/30 - 04/05):
-  Write multi-threaded stress tests (1 producer, 1 consumer). Configure
-  ThreadSanitizer (TSan) via CMake and verify the absence of data races.
+Week 3 (04/06 to 04/12):
+  Add zero-copy memory sharing via the buffer protocol so
+  that Python receives ``numpy.ndarray`` views without
+  copying. Extend ``pytest`` suite to verify zero-copy.
 
-Week 4 (04/06 - 04/12):
-  Implement the pybind11 wrapper. Expose the buffer creation and 
-  basic push methods to Python.
+(04/13 to 04/19): Midterm exam week -- no scheduled work.
 
-Week 5 (04/13 - 04/19):
-  Develop the zero-copy view mechanism. Implement ``sample_views()`` to 
-  return NumPy arrays using ``pybind11::buffer_info``. 
+Week 4 (04/20 to 04/26):
+  Redesign synchronization to use ``std::atomic`` with explicit
+  memory ordering (``acquire``/``release``) instead of ``std::mutex``.
+  Continue validating correctness through existing Python tests.
 
-Week 6 (04/20 - 04/26):
-  Manage object lifetime via ``std::shared_ptr`` to ensure Python views 
-  remain safe. Write Python integration tests (``pytest``) asserting 
-  memory sharing.
+Week 5 (04/27 to 05/03):
+  Concurrent stress tests (Google Test): run producer and
+  consumer threads simultaneously under high throughput.
+  Use ThreadSanitizer (TSan) for data-race detection.
 
-Week 7 (04/27 - 05/03):
-  Set up GitHub Actions for CI. Write benchmark scripts to compare the 
-  lock-free implementation's throughput vs. the mutex baseline.
+Week 6 (05/04 to 05/10):
+  Harden memory lifetime guarantees and test edge cases
+  (e.g., buffer deletion while Python views exist).
 
-Week 8 (05/04 - 05/10):
-  Finalize documentation, clean up code, and prepare the final 
-  presentation.
+Week 7 (05/11 to 05/17):
+  Benchmarking: atomic-based SPSC vs. mutex-based baseline,
+  measuring throughput and latency under concurrent load.
+
+Week 8 (05/18 to 05/24):
+  Buffer week for bug fixes, documentation cleanup, and
+  final presentation preparation.
 
 References
 ==========
 
-* cpprb (C++ Replay Buffer for RL): https://github.com/ymd-h/cpprb
-* modmesh (SimpleArray reference): https://github.com/solvcon/modmesh
+* cpprb: https://github.com/ymd-h/cpprb
+* modmesh: https://github.com/solvcon/modmesh
