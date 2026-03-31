@@ -1,11 +1,23 @@
-survey/
-
+# Build artifacts
+/build/
 /bin/
 /obj/
+
+# External libraries (git submodules 或手動下載)
 lib/
-include/
-share/
-local/
-Classnote/
+
+# IDE / editor
 .vscode/
+
+# Agent rules
 .agent/
+
+# Notes (optional, 看你要不要 track)
+survey/
+Classnote/
+
+# Python
+__pycache__/
+*.egg-info/
+*.so
+*.pyd
