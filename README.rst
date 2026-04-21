@@ -14,6 +14,12 @@ FastReplay is a C++ library providing a single-producer/single-consumer
 It exposes its internal memory buffer to Python via pybind11's
 buffer protocol to achieve zero-copy data sharing between C++ and Python.
 
+System Requirements
+===================
+* **C++ Standard**: C++11 (For cross-platform compatibility)
+* **CMake**: 3.15+ (Recommended)
+* **Python**: 3.8+ (For pybind11 integration)
+
 Technical Definition
 ====================
 
