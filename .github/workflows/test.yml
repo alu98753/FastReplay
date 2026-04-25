@@ -1,0 +1,49 @@
+name: C++ & Python CI
+
+on:
+    push:
+        branches: ["main"]
+    pull_request:
+        branches: ["main"]
+
+jobs:
+    build-and-test:
+        strategy:
+            matrix:
+                os: [ubuntu-22.04]
+            fail-fast: false
+        
+        runs-on: ${{matrix.os}}
+
+        steps:
+        
+        - name: Checkout repository
+          uses: actions/checkout@v4
+          with:
+            fetch-depth: 1
+        
+        - name: dependency (ubuntu)
+          run: |
+            sudo apt-get -q update
+            sudo apt-get -qy install \
+            build-essential cmake python3-pytest \
+            python3-pybind11 python3-pip python3-dev
+        
+        - name: Upgrade pip
+          run: python3 -m pip install --upgrade pip setuptools wheel
+
+        - name: dependency (python build backend)
+          run: pip install scikit-build-core
+        
+        - name: Build and Install module
+          run: pip install -e .
+        
+        - name: Run Python Pytest
+          run: python3 -m pytest tests/ -v
+        
+        - name: Run C++ GoogleTest
+          run: |
+            cmake -B build -Dpybind11_DIR=$(python3 -c "import pybind11; \
+            print(pybind11.get_cmake_dir())") -DBUILD_TESTING=ON
+            cmake --build build
+            cd build && ctest --output-on-failure
