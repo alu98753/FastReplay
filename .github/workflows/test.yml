@@ -29,11 +29,14 @@ jobs:
             build-essential cmake python3-pytest \
             python3-pybind11 python3-pip python3-dev
         
+        - name: Upgrade pip
+          run: python3 -m pip install --upgrade pip setuptools wheel
+
         - name: dependency (python build backend)
-          run: pip3 install scikit-build-core
+          run: pip install scikit-build-core
         
         - name: Build and Install module
-          run: pip3 install -e .
+          run: pip install -e .
         
         - name: Run Python Pytest
           run: python3 -m pytest tests/ -v
