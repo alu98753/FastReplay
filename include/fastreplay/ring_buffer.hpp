@@ -22,7 +22,6 @@ public:
     RingBuffer(const RingBuffer&) = delete;
     RingBuffer& operator=(const RingBuffer&) = delete;
   
-    // Push a val into buffer. Return true on success, false if full.
     bool push(int value){
 		std::lock_guard<std::mutex> lock(mtx_);
 		std::size_t next_tail = (tail_ + 1) % (capacity_ + 1);
@@ -34,14 +33,14 @@ public:
 		return true;
     }
 
-	// Pop a value from buffer. (C++11 pass-by-reference)
-	// Return true on success, false if empty
-	bool pop(int& out_val){
+	bool pop(int* out_val){
 		std::lock_guard<std::mutex> lock(mtx_);
 		if(head_ == tail_){
 			return false; // empty
 		}
-		out_val = buf_[head_];
+		if(out_val != nullptr){
+			*out_val = buf_[head_];
+		}
 		head_ = (head_ + 1) % (capacity_ + 1);
 		return true;
 	}
