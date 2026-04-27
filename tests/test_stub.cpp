@@ -27,7 +27,7 @@ TEST(RingBufferTest, PushAndPop) {
     EXPECT_EQ(rb.size(), 1);
 
     int val = 0;
-    EXPECT_TRUE(rb.pop(val)); // C++11: pop 回傳 bool，值放在 val
+    EXPECT_TRUE(rb.pop(&val)); // C++11: pop 回傳 bool，值放在 val
     EXPECT_EQ(val, 42);
     EXPECT_EQ(rb.size(), 0);
 }
@@ -39,18 +39,18 @@ TEST(RingBufferTest, FIFO_Order) {
     rb.push(30);
 
     int v = 0;
-    EXPECT_TRUE(rb.pop(v));
+    EXPECT_TRUE(rb.pop(&v));
     EXPECT_EQ(v, 10);
-    EXPECT_TRUE(rb.pop(v));
+    EXPECT_TRUE(rb.pop(&v));
     EXPECT_EQ(v, 20);
-    EXPECT_TRUE(rb.pop(v));
+    EXPECT_TRUE(rb.pop(&v));
     EXPECT_EQ(v, 30);
 }
 
 TEST(RingBufferTest, PopFromEmptyReturnsFalse) {
     fastreplay::RingBuffer rb(4);
     int v = 0;
-    EXPECT_FALSE(rb.pop(v)); // C++11: 空 buffer 時回傳 false，v 不被寫入
+    EXPECT_FALSE(rb.pop(&v)); // C++11: 空 buffer 時回傳 false，v 不被寫入
 }
 
 TEST(RingBufferTest, PushToFullReturnsFalse) {
@@ -72,9 +72,9 @@ TEST(RingBufferTest, WrapAround) {
 
     // pop 2 格，騰出空間
     int v = 0;
-    EXPECT_TRUE(rb.pop(v));
+    EXPECT_TRUE(rb.pop(&v));
     EXPECT_EQ(v, 1);
-    EXPECT_TRUE(rb.pop(v));
+    EXPECT_TRUE(rb.pop(&v));
     EXPECT_EQ(v, 2);
 
     // push 再填 2 格（此時 tail 會 wrap around）
@@ -82,11 +82,11 @@ TEST(RingBufferTest, WrapAround) {
     EXPECT_TRUE(rb.push(5));
 
     // 驗證 FIFO 順序
-    EXPECT_TRUE(rb.pop(v));
+    EXPECT_TRUE(rb.pop(&v));
     EXPECT_EQ(v, 3);
-    EXPECT_TRUE(rb.pop(v));
+    EXPECT_TRUE(rb.pop(&v));
     EXPECT_EQ(v, 4);
-    EXPECT_TRUE(rb.pop(v));
+    EXPECT_TRUE(rb.pop(&v));
     EXPECT_EQ(v, 5);
     EXPECT_TRUE(rb.empty());
 }
@@ -102,9 +102,9 @@ TEST(RingBufferTest, SizeTracksCorrectly) {
     EXPECT_EQ(rb.size(), 2);
 
     int v = 0;
-    rb.pop(v);
+    rb.pop(&v);
     EXPECT_EQ(rb.size(), 1);
 
-    rb.pop(v);
+    rb.pop(&v);
     EXPECT_EQ(rb.size(), 0);
 }
