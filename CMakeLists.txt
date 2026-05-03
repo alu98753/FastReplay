@@ -22,8 +22,17 @@ target_include_directories(fastreplay
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
+# also compile baseline module
+pybind11_add_module(fastreplay_baseline
+src/fastreplay_baseline.cpp)
+target_include_directories(fastreplay_baseline
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
 # install target (for pip install / scikit-build-core)
 install(TARGETS fastreplay DESTINATION .)
+install(TARGETS fastreplay_baseline DESTINATION .)
 
 # Tests (optional, use -DBUILD_TESTING=ON to enable)
 option(BUILD_TESTING "Build C++ tests" OFF)

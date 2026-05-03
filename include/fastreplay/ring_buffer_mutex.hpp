@@ -5,7 +5,7 @@
 #include <mutex>
 #include <vector>
 
-namespace fastreplay {
+namespace fastreplay_baseline {
 
 //interface placeholder
 class RingBuffer {
@@ -21,15 +21,7 @@ public:
     // SPSC queue semantics: non-copyable, non-movable
     RingBuffer(const RingBuffer&) = delete;
     RingBuffer& operator=(const RingBuffer&) = delete;
-	
-	int* data() { return buf_.data(); }
-	std::size_t head() const { return head_; }
-
-	void advance_head(std::size_t n) {
-		std::lock_guard<std::mutex> lock(mtx_);
-		head_ = (head_ + n) % (capacity_ + 1);
-	}
-
+  
     bool push(int value){
 		std::lock_guard<std::mutex> lock(mtx_);
 		std::size_t next_tail = (tail_ + 1) % (capacity_ + 1);
