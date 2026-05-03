@@ -42,16 +42,10 @@ PYBIND11_MODULE(fastreplay, m) {
                 std::size_t second_chunk = n - first_chunk;
                 
                 auto result = py::array_t<int>(n);
-                auto r = result.mutable_unchecked<1>(); // get writable reference
-
-                // copy first part
-                for (std::size_t i = 0; i < first_chunk; ++i) {
-                    r(i) = self.data()[current_head + i];
-                }
-                // copy second part
-                for (std::size_t i = 0; i < second_chunk; ++i) {
-                    r(first_chunk + i) = self.data()[i];
-                }
+                int* dest = result.mutable_data();
+                
+                std::memcpy(dest, self.data() + current_head, first_chunk * sizeof(int));
+                std::memcpy(dest + first_chunk, self.data(), second_chunk * sizeof(int));
                 self.advance_head(n);
                 return result;
             }
