@@ -23,6 +23,12 @@ public:
     RingBuffer& operator=(const RingBuffer&) = delete;
 	
 	int* data() { return buf_.data(); }
+	std::size_t head() const { return head_; }
+
+	void advance_head(std::size_t n) {
+		std::lock_guard<std::mutex> lock(mtx_);
+		head_ = (head_ + n) % (capacity_ + 1);
+	}
 
     bool push(int value){
 		std::lock_guard<std::mutex> lock(mtx_);
