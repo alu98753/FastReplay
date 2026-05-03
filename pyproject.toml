@@ -8,6 +8,11 @@ version = "0.1.0"
 description = "Atomic-based SPSC ring buffer for RL"
 requires-python = ">=3.10"
 
+dependencies = [
+    "numpy >=1.26.4",
+    "pytest >=8.0.0"
+]
+
 [tool.scikit-build]
 minimum-version = "build-system.requires"
 build-dir = "build/{wheel_tag}"
