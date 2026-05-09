@@ -87,6 +87,41 @@ Engineering Infrastructure
 * CI: GitHub Actions (Linux).
 * Analysis: ThreadSanitizer (TSan) to detect data races.
 
+Current API Status
+==================
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 10 65
+
+   * - API
+     - Status
+     - Description
+   * - ``push(value)``
+     - ✅
+     - Per-element FIFO write (mutex-synchronized)
+   * - ``pop()``
+     - ✅
+     - Per-element FIFO read + remove
+   * - ``pop_view(n)``
+     - ✅
+     - Batch FIFO read + remove (zero-copy when contiguous)
+   * - ``buffer_protocol``
+     - ✅
+     - Exposes C++ memory to numpy via ``np.asarray(rb)``
+   * - ``sample(batch_size)``
+     - ❌
+     - Random-access read without removal (off-policy RL)
+   * - ``push_batch(array)``
+     - ❌
+     - Batch write from numpy array (nice-to-have, low priority)
+   * - Template generalization
+     - ❌
+     - Currently ``int`` only; need ``float``, ``uint8`` (Issue #22)
+
+See `benchmarks/README.md <benchmarks/README.md>`_ for performance
+data and architectural implications.
+
 Schedule
 ========
 

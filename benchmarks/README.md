@@ -1,4 +1,4 @@
-# FastReplay Benchmark
+# Benchmark
 
 ## Overview
 
@@ -123,10 +123,130 @@ Adapted from EnvPool's 4-component model for buffer-focused analysis:
     *   [#26 [Micro/C++] Pure queue throughput & RTT](https://github.com/alu98753/FastReplay/issues/26)
     *   [#25 [Micro] Cross-payload (Medium/Large/XL)](https://github.com/alu98753/FastReplay/issues/25) — after template generalization
     *   [#24 [Macro] End-to-end time decomposition](https://github.com/alu98753/FastReplay/issues/24) — requires RTX 4090
+*   **Related (discovered via benchmark)**:
+    *   [#22 DictBuffer + Template generalization](https://github.com/alu98753/FastReplay/issues/22)
+    *   **NEW**: `[Feature] C++ sample(batch_size)` — correctness & usability (see Insight 1)
+
+## Current Implementation Status
+
+> **Note**: FastReplay does not yet implement `sample()` or `push_batch()`.
+> See [project README](../README.rst) for current API status.
+> I simulate `sample()` in `benchmarks/scripts/micro_bench.py` using
+> buffer protocol + numpy fancy indexing as a proxy measurement.
 
 ## Results
 
-*(To be populated after benchmark execution)*
+### 1. Small-payload throughput & latency (Issue #27)
+
+Script: `benchmarks/scripts/micro_bench.py`
+Environment: WSL2, 1000 trials, reporting median (min–max).
+
+#### Insight 1: Random Sample(with 1000 trials) — No significant difference
+
+Simulates the real off-policy RL pattern
+(SB3 `sac.py:218`: `replay_buffer.sample(batch_size=256)`).
+
+**How this test works (important context)**:
+FastReplay does not yet have a `sample()` method. To simulate it,
+I use the existing buffer protocol to let numpy read directly from
+FastReplay's C++ memory:
+
+1. **Storage**: FastReplay's C++ `std::vector` (data lives in C++)
+2. **Reading**: `np.asarray(rb)` creates a zero-copy view into C++
+   memory, then numpy fancy indexing gathers 256 random elements.
+
+So the "FastReplay" row below measures: **FastReplay storage + numpy reading**.
+The "Numpy baseline" row measures: **numpy storage + numpy reading**.
+
+| Implementation | Median (ns/call) | Range | samples/ms |
+|---|---:|---|---:|
+| FastReplay (C++ storage + numpy read) | 2,033 | 1,042–11,538 | 125,922 |
+| Numpy baseline (numpy storage + numpy read) | 1,941 | 609–5,711 | 131,891 |
+
+**Difference: ~5%, within measurement noise. Ranges overlap heavily.**
+
+Why? Both use the same numpy fancy indexing to gather data. The
+bottleneck is **memory scatter-gather** — the CPU must visit 256
+random memory locations regardless of who owns the memory.
+
+**This motivates implementing C++ `sample()`**: a native C++ sample()
+would handle both storage AND reading internally, eliminating numpy
+from the read path entirely. More critically, the current
+`np.asarray(rb)[:size]` approach has a **correctness issue**: when
+`head ≠ 0` (after pops), it returns stale data from popped positions,
+because the physical layout no longer matches the logical data order.
+For example:
+
+```
+After push(10,20,30,40,50) then pop() twice:
+  Physical memory: [10, 20, 30, 40, 50]   head=2, size=3
+  Valid data:               [30, 40, 50]   (positions 2,3,4)
+  np.asarray(rb)[:3] returns [10, 20, 30]  ← WRONG (includes popped 10, 20)
+  C++ sample() would know to start at head=2 and return from [30, 40, 50]
+```
+
+C++ `sample()` is needed for correctness and usability, not just
+performance.
+
+---
+
+#### Insight 2: Per-element — pybind11 call overhead dominates
+
+| Operation | FastReplay (Mutex) | Numpy | Ratio |
+|---|---:|---:|---|
+| Push | ~9,500 ops/ms | ~23,000 ops/ms | Numpy 2.4x faster |
+| Pop | ~9,500 ops/ms | ~22,000 ops/ms | Numpy 2.3x faster |
+
+pybind11's per-call overhead ≈ **50 ns** fixed cost. Over 1M calls
+this accumulates significantly. In batch operations (Random Sample,
+Batch FIFO), this cost is amortized to near zero because only 1
+cross-boundary call is made.
+
+**Conclusion**: While FastReplay's `push()` is slower than pure numpy
+due to pybind11 overhead, this overhead (~50ns) is completely
+negligible in real RL loops, where `env.step()` takes 0.08–5 ms
+depending on environment complexity [1, Section 4.2].
+Therefore, optimizing per-element push or adding a `push_batch()`
+API is a **low-priority "nice-to-have"**, not a critical bottleneck.
+
+---
+
+#### Insight 3: Batch FIFO — pop_view zero-copy achieves 16.7 GB/s
+
+| Operation | MB/s | Note |
+|---|---:|---|
+| pop_view (zero-copy) | 16,703 | Near DDR4 bandwidth ceiling |
+| np.copy (data copy) | 1,342 | Requires allocation + memcpy |
+| np.view (ref only) | 521,444 | No data movement (misleading) |
+
+pop_view is **12.4x faster** than np.copy. This validates the
+zero-copy path's value for sequential bulk operations (on-policy
+rollout consumption).
+
+Note: `np.view` does no data movement at all (just creates a pointer
+object), so its MB/s figure is not a meaningful bandwidth measure.
+
+---
+
+### Architectural implications
+
+These results inform the development roadmap:
+
+1.  **C++ `sample(batch_size)` is required** (new Issue [#28]
+    (https://github.com/alu98753/FastReplay/issues/28),
+    depends on #22):
+    Not for performance (bottleneck is memory scatter-gather),
+    but for correctness (head offset handling) and usability
+    (matching SB3/Tianshou API expectations).
+2.  **Batch push API is low priority**:
+    Although 1M individual pybind11 calls are slow, in a real RL
+    loop, `push()` is called once per `env.step()`. The ~50ns overhead
+    is negligible compared to env.step time (0.08–5 ms) [1, Section 4.2].
+3.  **Atomic migration (Issue #11)** will not show improvement in
+    single-threaded random sample. Its value lies in enabling
+    true SPSC concurrent push/sample without lock contention.
+
+
 
 ## References
 
