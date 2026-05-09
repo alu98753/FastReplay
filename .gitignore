@@ -15,7 +15,7 @@ lib/
 # Notes (optional, 看你要不要 track)
 survey/
 Classnote/
-
+benchmarks/literature/
 # Python
 __pycache__/
 *.egg-info/
