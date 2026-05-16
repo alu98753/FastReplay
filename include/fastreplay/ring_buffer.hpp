@@ -1,85 +1,118 @@
 #ifndef FAST_REPLAY_RING_BUFFER_HPP
 #define FAST_REPLAY_RING_BUFFER_HPP
 
+#include <atomic>
 #include <cstddef>
-#include <mutex>
 #include <vector>
 
 namespace fastreplay {
 
-//interface placeholder
+// SPSC ring buffer using std::atomic for index
+// synchronization. Avoids OS-level primitives
+// (std::mutex) on the hot data path (push/pop).
+//
+// NOTE: std::atomic is NOT guaranteed to be
+// lock-free on all platforms. Check
+// std::atomic<T>::is_lock_free() if needed.
 class RingBuffer {
 public:
     explicit RingBuffer(std::size_t capacity)
-		: capacity_(capacity)
+        : capacity_(capacity)
 		, buf_(capacity + 1) // +1 for full/empty distinguish
 		, head_(0) // set init head/tail to 0
-		, tail_(0) {}
+        , tail_(0) {}
 
     ~RingBuffer() = default;
 
     // SPSC queue semantics: non-copyable, non-movable
     RingBuffer(const RingBuffer&) = delete;
     RingBuffer& operator=(const RingBuffer&) = delete;
-	
-	int* data() { return buf_.data(); }
-	std::size_t head() const { return head_; }
 
-	void advance_head(std::size_t n) {
-		std::lock_guard<std::mutex> lock(mtx_);
-		head_ = (head_ + n) % (capacity_ + 1);
-	}
+    int* data() { return buf_.data(); }
 
-    bool push(int value){
-		std::lock_guard<std::mutex> lock(mtx_);
-		std::size_t next_tail = (tail_ + 1) % (capacity_ + 1);
-		if(next_tail == head_){
-			return false; // full
-		}
-		buf_[tail_] = value;
-		tail_ = next_tail;
-		return true;
+    std::size_t head() const {
+        return head_.load(std::memory_order_relaxed);
     }
 
-	bool pop(int* out_val){
-		std::lock_guard<std::mutex> lock(mtx_);
-		if(head_ == tail_){
-			return false; // empty
-		}
-		if(out_val != nullptr){
-			*out_val = buf_[head_];
-		}
-		head_ = (head_ + 1) % (capacity_ + 1);
-		return true;
-	}
+    void advance_head(std::size_t n) {
+        std::size_t cur = head_.load(
+            std::memory_order_relaxed);
+        head_.store(
+            (cur + n) % (capacity_ + 1),
+            std::memory_order_release);
+    }
 
-	std::size_t size() const {
-		std::lock_guard<std::mutex> lock(mtx_);
-		return (tail_ - head_ + capacity_ + 1) % (capacity_ + 1);
-	}
+    // Producer-side: push one element.
+    // Returns false if the buffer is full.
+    bool push(int value) {
+        std::size_t cur_tail = tail_.load(
+            std::memory_order_relaxed);
+        std::size_t next_tail =
+            (cur_tail + 1) % (capacity_ + 1);
+        // Acquire: see consumer's latest head_
+        if (next_tail == head_.load(
+                std::memory_order_acquire)) {
+            return false; // full
+        }
+        buf_[cur_tail] = value;
+        // Release: make buf_ write visible
+        // before advancing tail
+        tail_.store(
+            next_tail,
+            std::memory_order_release);
+        return true;
+    }
 
-	bool empty() const {
-		std::lock_guard<std::mutex> lock(mtx_);
-		return head_ == tail_;
-	}
+    // Consumer-side: pop one element.
+    // Returns false if empty.
+    bool pop(int* out_val) {
+        std::size_t cur_head = head_.load(
+            std::memory_order_relaxed);
+        // Acquire: see producer's latest tail_
+        if (cur_head == tail_.load(
+                std::memory_order_acquire)) {
+            return false; // empty
+        }
+        if (out_val != nullptr) {
+            *out_val = buf_[cur_head];
+        }
+        // Release: ensure buf_ read completes
+        // before advancing head
+        head_.store(
+            (cur_head + 1) % (capacity_ + 1),
+            std::memory_order_release);
+        return true;
+    }
 
-	std::size_t capacity() const {
-		return capacity_;
-	}
+    // Approximate size (relaxed ordering).
+    // In concurrent use, may be slightly stale.
+    std::size_t size() const {
+        std::size_t t = tail_.load(
+            std::memory_order_relaxed);
+        std::size_t h = head_.load(
+            std::memory_order_relaxed);
+        return (t - h + capacity_ + 1)
+            % (capacity_ + 1);
+    }
 
-    /*Week2: push/pop
-      Week3: buffer_protocol
-      Week4: atomic-based synchronization
-    */
+    bool empty() const {
+        return head_.load(
+            std::memory_order_relaxed)
+            == tail_.load(
+                std::memory_order_relaxed);
+    }
+
+    std::size_t capacity() const {
+        return capacity_;
+    }
 
 private:
-    std::size_t capacity_; // user-facing capacity actual store size is capacity +1
-    std::vector<int> buf_; // internal storage (size = capacity + 1)
-    std::size_t head_; // read index
-    std::size_t tail_; // write idx
-    mutable std::mutex mtx_; // week2 mutex-based sync
+    std::size_t capacity_;
+    std::vector<int> buf_;
+    std::atomic<std::size_t> head_;
+    std::atomic<std::size_t> tail_;
 };
 
-} 
+} // namespace fastreplay
 
 #endif // FAST_REPLAY_RING_BUFFER_HPP
