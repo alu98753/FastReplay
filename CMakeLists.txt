@@ -12,6 +12,7 @@ execute_process(
     OUTPUT_VARIABLE pybind11_DIR
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
+set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 REQUIRED)
 
 # 2. pybind11 module
@@ -39,4 +40,11 @@ option(BUILD_TESTING "Build C++ tests" OFF)
 if(BUILD_TESTING)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# ThreadSanitizer option (optional, use -DENABLE_TSAN=ON to enable)
+option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+if(ENABLE_TSAN)
+    add_compile_options(-fsanitize=thread -g)
+    add_link_options(-fsanitize=thread)
 endif()
