@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 #include "fastreplay/ring_buffer.hpp"
 
+#include <thread>
+#include <vector>
+
 // Using C++11
 
 // w1: only test compile at include
@@ -109,10 +112,8 @@ TEST(RingBufferTest, SizeTracksCorrectly) {
     EXPECT_EQ(rb.size(), 0);
 }
 
-// ---- Issue #11 pre-migration regression tests ----
-
 TEST(RingBufferTest, AdvanceHeadCorrectness) {
-    // Gap 1: advance_head across wrap boundary
+    // advance_head across wrap boundary
     fastreplay::RingBuffer rb(4); // phys = 5
     for (int i = 0; i < 4; ++i) {
         rb.push(i);
@@ -137,7 +138,7 @@ TEST(RingBufferTest, AdvanceHeadCorrectness) {
 }
 
 TEST(RingBufferTest, MultiWrapCycle) {
-    // Gap 2: 3 full fill-drain cycles
+    // 3 full fill-drain cycles
     fastreplay::RingBuffer rb(3);
     int base = 0;
     for (int cycle = 0; cycle < 3; ++cycle) {
@@ -160,7 +161,7 @@ TEST(RingBufferTest, MultiWrapCycle) {
 }
 
 TEST(RingBufferTest, CapacityOneEdgeCase) {
-    // Gap 3: capacity=1, phys=2, indices {0,1}
+    // capacity=1, phys=2, indices {0,1}
     fastreplay::RingBuffer rb(1);
     EXPECT_EQ(rb.capacity(), 1);
     EXPECT_TRUE(rb.empty());
@@ -182,7 +183,7 @@ TEST(RingBufferTest, CapacityOneEdgeCase) {
 }
 
 TEST(RingBufferTest, PopNullptrDiscards) {
-    // Gap 4: pop with nullptr discards value
+    // pop with nullptr discards value
     fastreplay::RingBuffer rb(4);
     rb.push(10);
     rb.push(20);
@@ -197,4 +198,45 @@ TEST(RingBufferTest, PopNullptrDiscards) {
     int v = 0;
     EXPECT_TRUE(rb.pop(&v));
     EXPECT_EQ(v, 20);
+}
+
+// ---- Concurrent stress test ----
+
+TEST(RingBufferTest, ConcurrentSPSC) {
+    // two-thread push/pop stress test
+    const int N = 100000;
+    fastreplay::RingBuffer rb(1024);
+
+    // Producer thread: push 0..N-1
+    std::thread producer([&rb]() {
+        for (int i = 0; i < N; ++i) {
+            while (!rb.push(i)) {
+                // spin until space available
+            }
+        }
+    });
+
+    // Consumer thread: pop N values
+    std::vector<int> received;
+    received.reserve(N);
+    std::thread consumer([&rb, &received]() {
+        for (int i = 0; i < N; ++i) {
+            int val = 0;
+            while (!rb.pop(&val)) {
+                // spin until data available
+            }
+            received.push_back(val);
+        }
+    });
+
+    producer.join();
+    consumer.join();
+
+    // Verify FIFO ordering preserved
+    ASSERT_EQ(
+        static_cast<int>(received.size()), N);
+    for (int i = 0; i < N; ++i) {
+        EXPECT_EQ(received[i], i);
+    }
+    EXPECT_TRUE(rb.empty());
 }
