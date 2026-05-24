@@ -12,6 +12,7 @@ lib/
 
 # Agent rules
 .agent/
+AGENT.md
 
 # Notes (optional, 看你要不要 track)
 survey/
@@ -23,3 +24,13 @@ __pycache__/
 *.egg-info/
 *.so
 *.pyd
+
+# Exclude profiling generated data
+benchmarks/profiling/**/*.data
+benchmarks/profiling/**/*.out
+benchmarks/profiling/**/*.cprof
+# 想排除除了 md 和 python 腳本外的所有檔案，可自行撰寫規則
+benchmarks/profiling/**/*.txt
+benchmarks/profiling/**/*.json
+benchmarks/profiling/**/*.err
+
