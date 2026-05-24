@@ -245,7 +245,7 @@ def main():
               ITERATIONS, bench_push_per_element(rb_mutex, ITERATIONS))
 
     rb_zc = fastreplay.RingBuffer(CAPACITY)
-    print_row("FastReplay (Mutex+ZC)",
+    print_row("FastReplay (Atomic+ZC)",
               ITERATIONS, bench_push_per_element(rb_zc, ITERATIONS))
 
     print_row("Numpy baseline",
@@ -256,7 +256,7 @@ def main():
     print_row("FastReplay (Mutex)",
               ITERATIONS, bench_pop_per_element(rb_mutex, ITERATIONS))
 
-    print_row("FastReplay (Mutex+ZC)",
+    print_row("FastReplay (Atomic+ZC)",
               ITERATIONS, bench_pop_per_element(rb_zc, ITERATIONS))
 
     print_row("Numpy baseline",
