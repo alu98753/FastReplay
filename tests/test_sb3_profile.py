@@ -3,7 +3,9 @@
 import sys
 from pathlib import Path
 import pytest
-import gymnasium as gym
+
+gym = pytest.importorskip("gymnasium")
+sb3 = pytest.importorskip("stable_baselines3")
 
 # Setup Python path to import sb3_profile script
 ROOT = Path(__file__).resolve().parents[1]
