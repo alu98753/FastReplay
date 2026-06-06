@@ -126,15 +126,9 @@ public:
         std::size_t n = (t - h + capacity_ + 1)
             % (capacity_ + 1);
 
-        if (batch_size > n) {
-            throw std::runtime_error(
-                "sample_indices: batch_size ("
-                + std::to_string(batch_size)
-                + ") > buffer size ("
-                + std::to_string(n) + ")");
-        }
         if (n == 0) {
-            return {};
+            throw std::runtime_error(
+                "sample_indices: buffer is empty");
         }
 
         // Thread-local RNG avoids allocation per call
