@@ -64,6 +64,10 @@ PYBIND11_MODULE(fastreplay, m) {
             );
         })
         .def("capacity", &fastreplay::RingBuffer::capacity)
+        .def("data_ptr", [](fastreplay::RingBuffer& self) {
+            return reinterpret_cast<std::uintptr_t>(self.data());
+        }, "Return the raw memory address of the internal buffer.\n"
+           "Used for pointer identity verification of zero-copy semantics.")
         .def("sample_indices", [](const fastreplay::RingBuffer& self,
                                    std::size_t batch_size) {
             auto indices = self.sample_indices(batch_size);

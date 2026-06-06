@@ -175,3 +175,97 @@ def test_sample_indices_returns_int64():
     assert indices.dtype == np.int64, (
         f"Expected int64, got {indices.dtype}"
     )
+
+
+# ---- Zero-Copy Semantic Verification (Issue #28 / Slide 5) ----
+
+def test_zero_copy_pointer_identity():
+    """Verify zero-copy by checking that the NumPy view's memory address
+    matches the C++ ring buffer's internal data pointer.
+
+    This is a hardware-independent verification: if two arrays share the
+    same base address, no memory copy occurred. This proves zero-copy as
+    a memory semantics guarantee, not a performance claim.
+    """
+    buf = fastreplay.RingBuffer(8)
+    for i in range(5):
+        buf.push(i * 10)
+
+    # Get the C++ buffer's raw data pointer (physical index 0)
+    cpp_base_ptr = buf.data_ptr()
+
+    # Get a NumPy view via buffer protocol
+    arr = np.asarray(buf)
+    numpy_base_ptr = arr.ctypes.data
+
+    # Pointer identity: both point to the same memory
+    assert cpp_base_ptr == numpy_base_ptr, (
+        f"Pointer mismatch: C++ data_ptr=0x{cpp_base_ptr:x}, "
+        f"NumPy ctypes.data=0x{numpy_base_ptr:x}. "
+        f"This means np.asarray(buf) performed a copy!"
+    )
+
+
+def test_zero_copy_pointer_identity_pop_view():
+    """Verify pop_view returns a pointer into the original buffer (no copy)
+    when data is contiguous (no wrap-around).
+
+    The returned array's base address should equal
+    data_ptr + head * sizeof(int).
+    """
+    buf = fastreplay.RingBuffer(8)
+    for i in range(6):
+        buf.push(i * 10)
+
+    # Pop 2 elements so head advances to physical index 2
+    buf.pop()
+    buf.pop()
+
+    cpp_base_ptr = buf.data_ptr()
+    head = 2  # after 2 pops
+    expected_view_ptr = cpp_base_ptr + head * np.dtype(np.int32).itemsize
+
+    view = buf.pop_view(4)
+    view_ptr = view.ctypes.data
+
+    assert view_ptr == expected_view_ptr, (
+        f"pop_view pointer mismatch: expected 0x{expected_view_ptr:x} "
+        f"(data_ptr + head*4), got 0x{view_ptr:x}. "
+        f"pop_view may have copied data instead of returning a view."
+    )
+    assert view.tolist() == [20, 30, 40, 50]
+
+
+def test_zero_copy_mutation_visibility():
+    """Verify zero-copy by writing through the NumPy view and confirming
+    the mutation is visible when reading back from the C++ buffer.
+
+    If np.asarray(buf) is truly zero-copy, then modifying the NumPy array
+    should modify the underlying C++ buffer's memory. This is the
+    'mutation visibility' proof of shared memory.
+    """
+    buf = fastreplay.RingBuffer(4)
+    buf.push(100)
+    buf.push(200)
+    buf.push(300)
+
+    # Get a zero-copy view
+    arr = np.asarray(buf)
+
+    # Mutate through the NumPy side
+    arr[0] = 999
+
+    # Read back through a fresh NumPy view from the C++ buffer
+    arr2 = np.asarray(buf)
+    assert arr2[0] == 999, (
+        f"Mutation not visible: wrote 999 via NumPy view, "
+        f"but C++ buffer still shows {arr2[0]}. "
+        f"This means np.asarray(buf) is NOT zero-copy."
+    )
+
+    # Also verify via pop (reads from C++ internal memory)
+    val = buf.pop()
+    assert val == 999, (
+        f"Mutation not visible via pop(): expected 999, got {val}. "
+        f"The NumPy view does not share memory with the C++ buffer."
+    )
