@@ -3,6 +3,8 @@
 
 #include <atomic>
 #include <cstddef>
+#include <random>
+#include <stdexcept>
 #include <vector>
 
 namespace fastreplay {
@@ -104,6 +106,45 @@ public:
 
     std::size_t capacity() const {
         return capacity_;
+    }
+
+    // Generate batch_size random valid physical indices.
+    // Returns indices that correctly account for the
+    // head position and wrap-around — fixing the stale
+    // data bug that occurs with naive np.asarray(rb)[:n].
+    //
+    // Read-only: does NOT consume (pop) any elements.
+    // Thread-safe for the consumer side (acquires
+    // producer's tail_ to determine valid range).
+    std::vector<std::size_t> sample_indices(
+            std::size_t batch_size) const {
+        std::size_t h = head_.load(
+            std::memory_order_relaxed);
+        // Acquire: see producer's latest tail_
+        std::size_t t = tail_.load(
+            std::memory_order_acquire);
+        std::size_t n = (t - h + capacity_ + 1)
+            % (capacity_ + 1);
+
+        if (n == 0) {
+            throw std::runtime_error(
+                "sample_indices: buffer is empty");
+        }
+
+        // Thread-local RNG avoids allocation per call
+        // and is safe in SPSC (consumer-side only).
+        thread_local std::mt19937_64 rng{
+            std::random_device{}()};
+        std::uniform_int_distribution<std::size_t>
+            dist(0, n - 1);
+
+        std::vector<std::size_t> indices(batch_size);
+        std::size_t phys = capacity_ + 1;
+        for (std::size_t i = 0; i < batch_size; ++i) {
+            std::size_t offset = dist(rng);
+            indices[i] = (h + offset) % phys;
+        }
+        return indices;
     }
 
 private:

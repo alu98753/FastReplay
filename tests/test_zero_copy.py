@@ -101,3 +101,77 @@ def test_head_nonzero_stale_data():
     assert correct_data == [30, 40, 50], (
         "Correct data must start from head position, not index 0"
     )
+
+
+# ---- sample_indices tests (Issue #28 fix) ----
+
+def test_sample_indices_fixes_stale_data():
+    """sample_indices returns head-aware indices that avoid stale data.
+
+    This is the COMPLEMENT to test_head_nonzero_stale_data above:
+    that test PROVES the bug exists with naive slicing;
+    this test PROVES sample_indices fixes it.
+    """
+    rb = fastreplay.RingBuffer(5)
+    for v in [10, 20, 30, 40, 50]:
+        rb.push(v)
+
+    rb.pop()  # discard 10, head → 1
+    rb.pop()  # discard 20, head → 2
+    assert rb.size() == 3
+
+    arr = np.asarray(rb)
+
+    # Use sample_indices to get valid physical indices
+    indices = rb.sample_indices(1000)
+
+    # Every sampled value must be from {30, 40, 50}, never {10, 20}
+    sampled_values = set(arr[indices].tolist())
+    assert sampled_values <= {30, 40, 50}, (
+        f"sample_indices returned stale data: {sampled_values - {30, 40, 50}}"
+    )
+    # With 1000 samples from 3 elements, we should hit all 3
+    assert sampled_values == {30, 40, 50}, (
+        f"Expected all valid values, got {sampled_values}"
+    )
+
+
+def test_sample_indices_wrap_around():
+    """sample_indices handles wrap-around correctly."""
+    rb = fastreplay.RingBuffer(4)  # phys capacity = 5
+    for i in range(4):
+        rb.push(i * 10)
+    rb.pop()  # head=1
+    rb.pop()  # head=2
+    rb.pop()  # head=3
+    rb.push(100)  # slot 4
+    rb.push(110)  # slot 0 (wrapped)
+    # valid slots: {3, 4, 0}, values: {30, 100, 110}
+    assert rb.size() == 3
+
+    arr = np.asarray(rb)
+    indices = rb.sample_indices(500)
+
+    sampled_values = set(arr[indices].tolist())
+    assert sampled_values == {30, 100, 110}, (
+        f"Expected {{30, 100, 110}}, got {sampled_values}"
+    )
+
+
+def test_sample_indices_empty_raises():
+    """sample_indices on empty buffer raises RuntimeError."""
+    rb = fastreplay.RingBuffer(4)
+    with pytest.raises(RuntimeError, match="empty"):
+        rb.sample_indices(1)
+
+
+def test_sample_indices_returns_int64():
+    """Returned array dtype must be int64 for NumPy indexing compatibility."""
+    rb = fastreplay.RingBuffer(8)
+    for i in range(5):
+        rb.push(i)
+
+    indices = rb.sample_indices(3)
+    assert indices.dtype == np.int64, (
+        f"Expected int64, got {indices.dtype}"
+    )

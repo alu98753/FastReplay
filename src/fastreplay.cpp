@@ -63,6 +63,20 @@ PYBIND11_MODULE(fastreplay, m) {
                 {sizeof(int)} //strides
             );
         })
-        .def("capacity", &fastreplay::RingBuffer::capacity);
+        .def("capacity", &fastreplay::RingBuffer::capacity)
+        .def("sample_indices", [](const fastreplay::RingBuffer& self,
+                                   std::size_t batch_size) {
+            auto indices = self.sample_indices(batch_size);
+            // Return as int64 array (matches numpy default int dtype)
+            auto result = py::array_t<int64_t>(indices.size());
+            auto buf = result.mutable_unchecked<1>();
+            for (std::size_t i = 0; i < indices.size(); ++i) {
+                buf(i) = static_cast<int64_t>(indices[i]);
+            }
+            return result;
+        }, py::arg("batch_size"),
+        "Return batch_size random valid physical indices.\n"
+        "Correctly handles head offset and wrap-around.\n"
+        "Does NOT consume (pop) any elements.");
 
 }

@@ -240,3 +240,95 @@ TEST(RingBufferTest, ConcurrentSPSC) {
     }
     EXPECT_TRUE(rb.empty());
 }
+
+// ---- sample_indices tests (Issue #28) ----
+
+TEST(SampleIndicesTest, BasicSampling) {
+    // head=0, buffer has 5 elements in slots 0..4
+    fastreplay::RingBuffer rb(8);
+    for (int i = 0; i < 5; ++i) {
+        rb.push(i * 10);
+    }
+    EXPECT_EQ(rb.size(), 5);
+
+    auto indices = rb.sample_indices(3);
+    EXPECT_EQ(indices.size(), 3);
+
+    // All indices must be in valid physical range [0, 5)
+    for (auto idx : indices) {
+        EXPECT_GE(idx, 0);
+        EXPECT_LT(idx, 5);
+    }
+}
+
+TEST(SampleIndicesTest, HeadNonZero) {
+    // This is the critical test: after pops, head != 0.
+    // sample_indices must return indices in the VALID
+    // range, not the stale physical range [0, size).
+    fastreplay::RingBuffer rb(5);
+    for (int v : {10, 20, 30, 40, 50}) {
+        rb.push(v);
+    }
+    // Pop 2 → head moves to 2, valid data at slots 2,3,4
+    int discard;
+    rb.pop(&discard);
+    rb.pop(&discard);
+    EXPECT_EQ(rb.size(), 3);
+    EXPECT_EQ(rb.head(), 2);
+
+    auto indices = rb.sample_indices(100);
+    for (auto idx : indices) {
+        // Valid physical slots are {2, 3, 4}
+        EXPECT_GE(idx, 2);
+        EXPECT_LE(idx, 4);
+    }
+
+    // Verify sampled data is never stale (10 or 20)
+    for (auto idx : indices) {
+        int val = rb.data()[idx];
+        EXPECT_TRUE(val == 30 || val == 40 || val == 50)
+            << "Got stale value " << val << " at idx " << idx;
+    }
+}
+
+TEST(SampleIndicesTest, WrapAround) {
+    // Set up buffer so valid data wraps around the end.
+    // capacity=4, phys=5, slots {0,1,2,3,4}
+    fastreplay::RingBuffer rb(4);
+    // Fill and pop to advance head past midpoint
+    for (int i = 0; i < 4; ++i) rb.push(i);
+    int v;
+    rb.pop(&v); // head=1
+    rb.pop(&v); // head=2
+    rb.pop(&v); // head=3
+    rb.push(10); // tail wraps to 0 → slot 4=10
+    rb.push(11); // slot 0=11
+    // Now: head=3, tail=1, valid slots = {3, 4, 0}
+    EXPECT_EQ(rb.size(), 3);
+
+    auto indices = rb.sample_indices(200);
+    for (auto idx : indices) {
+        EXPECT_TRUE(idx == 0 || idx == 3 || idx == 4)
+            << "Invalid index " << idx
+            << " (expected 0, 3, or 4)";
+    }
+}
+
+TEST(SampleIndicesTest, EmptyBufferThrows) {
+    fastreplay::RingBuffer rb(4);
+    EXPECT_THROW(rb.sample_indices(1), std::runtime_error);
+}
+
+TEST(SampleIndicesTest, BatchSizeLargerThanBuffer) {
+    // RL samples WITH replacement, so batch_size > size is valid
+    fastreplay::RingBuffer rb(4);
+    rb.push(1);
+    rb.push(2);
+    EXPECT_EQ(rb.size(), 2);
+    // batch_size=10 > size=2: allowed (with replacement)
+    auto indices = rb.sample_indices(10);
+    EXPECT_EQ(indices.size(), 10);
+    for (auto idx : indices) {
+        EXPECT_TRUE(idx == 0 || idx == 1);
+    }
+}
