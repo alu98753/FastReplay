@@ -13,7 +13,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import gymnasium as gym
+
+gym = pytest.importorskip("gymnasium", reason="gymnasium not installed; skipping SB3 compat tests")
 
 # Ensure fastreplay_sb3 is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -146,7 +147,7 @@ def test_reset(buffer):
 
 def test_dqn_smoke():
     """Smoke test: DQN can train with FastReplayBuffer without crashing."""
-    from stable_baselines3 import DQN
+    DQN = pytest.importorskip("stable_baselines3", reason="stable_baselines3 not installed").DQN
 
     model = DQN(
         "MlpPolicy",

@@ -94,12 +94,9 @@ Current API Status
    :header-rows: 1
    :widths: 25 10 65
 
-   * - API
-     - Status
-     - Description
    * - ``push(value)``
      - ✅
-     - Per-element FIFO write (mutex-synchronized)
+     - Per-element FIFO write (atomic, no mutex on hot path)
    * - ``pop()``
      - ✅
      - Per-element FIFO read + remove
@@ -109,9 +106,13 @@ Current API Status
    * - ``buffer_protocol``
      - ✅
      - Exposes C++ memory to numpy via ``np.asarray(rb)``
+   * - ``sample_indices(batch_size)``
+     - ✅
+     - Returns random valid physical indices for off-policy RL sampling;
+       accounts for head position and wrap-around to avoid stale-data bug
    * - ``sample(batch_size)``
      - ❌
-     - Random-access read without removal (off-policy RL)
+     - Full batch data collection (planned; depends on Issue #22 template generalization)
    * - ``push_batch(array)``
      - ❌
      - Batch write from numpy array (nice-to-have, low priority)
@@ -168,3 +169,4 @@ References
 
 * cpprb: https://github.com/ymd-h/cpprb
 * modmesh: https://github.com/solvcon/modmesh
+* stable-baselines3: https://github.com/DLR-RM/stable-baselines3
