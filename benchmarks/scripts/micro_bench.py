@@ -236,51 +236,51 @@ def main():
     # ----------------------------------------------------------
     # Per-element
     # ----------------------------------------------------------
-    print("\n--- Per-element (1M individual Python->C++ calls) ---")
+    # print("\n--- Per-element (1M individual Python->C++ calls) ---")
 
-    # Push
-    print("\n  [Push]")
-    rb_mutex = fastreplay_baseline.RingBuffer(CAPACITY)
-    print_row("FastReplay (Mutex)",
-              ITERATIONS, bench_push_per_element(rb_mutex, ITERATIONS))
+    # # Push
+    # print("\n  [Push]")
+    # rb_mutex = fastreplay_baseline.RingBuffer(CAPACITY)
+    # print_row("FastReplay (Mutex)",
+    #           ITERATIONS, bench_push_per_element(rb_mutex, ITERATIONS))
 
-    rb_zc = fastreplay.RingBuffer(CAPACITY)
-    print_row("FastReplay (Atomic+ZC)",
-              ITERATIONS, bench_push_per_element(rb_zc, ITERATIONS))
+    # rb_zc = fastreplay.RingBuffer(CAPACITY)
+    # print_row("FastReplay (Atomic+ZC)",
+    #           ITERATIONS, bench_push_per_element(rb_zc, ITERATIONS))
 
-    print_row("Numpy baseline",
-              ITERATIONS, numpy_push_per_element(ITERATIONS))
+    # print_row("Numpy baseline",
+    #           ITERATIONS, numpy_push_per_element(ITERATIONS))
 
-    # Pop
-    print("\n  [Pop]")
-    print_row("FastReplay (Mutex)",
-              ITERATIONS, bench_pop_per_element(rb_mutex, ITERATIONS))
+    # # Pop
+    # print("\n  [Pop]")
+    # print_row("FastReplay (Mutex)",
+    #           ITERATIONS, bench_pop_per_element(rb_mutex, ITERATIONS))
 
-    print_row("FastReplay (Atomic+ZC)",
-              ITERATIONS, bench_pop_per_element(rb_zc, ITERATIONS))
+    # print_row("FastReplay (Atomic+ZC)",
+    #           ITERATIONS, bench_pop_per_element(rb_zc, ITERATIONS))
 
-    print_row("Numpy baseline",
-              ITERATIONS, numpy_pop_per_element(ITERATIONS))
+    # print_row("Numpy baseline",
+    #           ITERATIONS, numpy_pop_per_element(ITERATIONS))
 
-    # ----------------------------------------------------------
-    # Batch FIFO (single call)
-    # ----------------------------------------------------------
-    print("\n--- Batch FIFO (single bulk call for N items) ---")
+    # # ----------------------------------------------------------
+    # # Batch FIFO (single call)
+    # # ----------------------------------------------------------
+    # print("\n--- Batch FIFO (single bulk call for N items) ---")
 
-    # Refill buffer for batch pop test
-    rb_batch = fastreplay.RingBuffer(CAPACITY)
-    for i in range(ITERATIONS):
-        rb_batch.push(i)
+    # # Refill buffer for batch pop test
+    # rb_batch = fastreplay.RingBuffer(CAPACITY)
+    # for i in range(ITERATIONS):
+    #     rb_batch.push(i)
 
-    print("\n  [Batch Pop / Slice]")
-    print_row("FastReplay pop_view (zero-copy)",
-              ITERATIONS, bench_pop_view_batch(rb_batch, ITERATIONS))
+    # print("\n  [Batch Pop / Slice]")
+    # print_row("FastReplay pop_view (zero-copy)",
+    #           ITERATIONS, bench_pop_view_batch(rb_batch, ITERATIONS))
 
-    print_row("Numpy np.copy(arr[:n]) (data copy)",
-              ITERATIONS, numpy_copy_batch(ITERATIONS))
+    # print_row("Numpy np.copy(arr[:n]) (data copy)",
+    #           ITERATIONS, numpy_copy_batch(ITERATIONS))
 
-    print_row("Numpy arr[:n] (view only, ref)",
-              ITERATIONS, numpy_view_batch(ITERATIONS))
+    # print_row("Numpy arr[:n] (view only, ref)",
+    #           ITERATIONS, numpy_view_batch(ITERATIONS))
 
 
 if __name__ == "__main__":
