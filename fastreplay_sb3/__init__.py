@@ -116,6 +116,20 @@ class FastReplayBuffer(ReplayBuffer):
         self._index_ring = fastreplay.RingBuffer(self.buffer_size)
 
     # ------------------------------------------------------------------
+    # Override: sample() — use C++ sample_indices for random sampling
+    # ------------------------------------------------------------------
+    def sample(self, batch_size: int, env: VecNormalize | None = None) -> ReplayBufferSamples:
+        """Sample elements from the replay buffer using C++ index generator."""
+        # 1. 取得 C++ 索引環底層物理記憶體的 numpy view
+        ring_view = np.asarray(self._index_ring)
+        # 2. 透過 C++ 產生安全且 head-aware 的隨機物理索引
+        phys_inds = self._index_ring.sample_indices(batch_size)
+        # 3. 從物理視圖中映射出當初儲存的邏輯寫入索引 (self.pos)
+        batch_inds = ring_view[phys_inds]
+        # 4. 委託基底類別 _get_samples 根據這些索引組裝資料
+        return self._get_samples(batch_inds, env=env)
+
+    # ------------------------------------------------------------------
     # Accessors for the C++ ring state (useful for testing / debugging)
     # ------------------------------------------------------------------
     @property
